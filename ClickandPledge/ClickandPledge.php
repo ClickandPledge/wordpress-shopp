@@ -4,7 +4,7 @@
  * @class ClickandPledge
  *
  * @author Click & Pledge Team
- * @version 1.2
+ * @version 1.3
  * @copyright Click & Pledge, 27 Oct, 2011
  * @package Shopp
  * @since 1.2
@@ -83,7 +83,7 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 						'GF' => '254','PF' => '258','TF' => '260','AX' => '248','CW' => '531','SH' => '654',
 						'SX' => '534','SS' => '728','UM' => '581'		
           );
-
+	var $shoppmeta = array();
 	function __construct () {
 		parent::__construct();	
 		
@@ -99,12 +99,19 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 		
 		if (array_key_exists($this->baseop['country'],$this->locales))
 			$this->settings['locale'] = $this->locales[$this->baseop['country']];
-		else $this->settings['locale'] = $this->locales['US'];
+		//else $this->settings['locale'] = $this->locales['US'];
 
 		$this->buttonurl = sprintf(force_ssl($this->buttonurl), $this->settings['locale']);
 
 		if (!isset($this->settings['label'])) $this->settings['label'] = "Click & Pledge";
-
+		
+		$metaObj = $codeObj = sDB::query("SELECT * FROM ".ShoppDatabaseObject::tablename('meta')." where context = 'shopp' and type='setting'");
+		foreach($metaObj as $meta)
+		{
+			$this->shoppmeta[$meta->name] = $meta->value;
+		}
+		//echo '<pre>';
+		//print_r($this->shoppmeta);
 		// Autoset useable payment cards
 		$this->settings['cards'] = array();
 		
@@ -128,6 +135,7 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 			}
 		}
 		
+		
 		add_action('shopp_clickandpledge_sale',array(&$this,'sale'));
 		add_action('shopp_clickandpledge_auth',array(&$this,'auth'));
 		add_action('shopp_clickandpledge_capture',array(&$this,'capture'));
@@ -135,9 +143,8 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 	
 	function sale (OrderEventMessage $Event) {		
 		$this->handler('authed',$Event);		
-		$this->handler('captured',$Event);	
+		$this->handler('captured',$Event);
 	}
-	
 	
 	function auth (OrderEventMessage $Event) {		
 		$this->handler('authed',$Event);
@@ -152,6 +159,38 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 		$this->Order->confirm = true;
 	}
 	
+	function CreditCardCompany($ccNum)
+	 {
+			/*
+				* mastercard: Must have a prefix of 51 to 55, and must be 16 digits in length.
+				* Visa: Must have a prefix of 4, and must be either 13 or 16 digits in length.
+				* American Express: Must have a prefix of 34 or 37, and must be 15 digits in length.
+				* Diners Club: Must have a prefix of 300 to 305, 36, or 38, and must be 14 digits in length.
+				* Discover: Must have a prefix of 6011, and must be 16 digits in length.
+				* JCB: Must have a prefix of 3, 1800, or 2131, and must be either 15 or 16 digits in length.
+			*/
+	 
+			if (ereg("^5[1-5][0-9]{14}$", $ccNum))
+					return "MasterCard";
+	 
+			elseif (ereg("^4[0-9]{12}([0-9]{3})?$", $ccNum))
+					return "Visa";
+	 
+			elseif (ereg("^3[47][0-9]{13}$", $ccNum))
+					return "American Express";
+	 
+			elseif (ereg("^3(0[0-5]|[68][0-9])[0-9]{11}$", $ccNum))
+					return "Diners Club";
+	 
+			elseif (ereg("^6011[0-9]{12}$", $ccNum))
+					return "Discover";
+	 
+			elseif (ereg("^(3[0-9]{4}|2131|1800)[0-9]{11}$", $ccNum))
+					return "JCB";
+			else
+				return "invalid";
+	 }
+	 
 function handler ($type,$Event) 
 {
 		if(!isset($Event->txnid)) $Event->txnid = time();
@@ -162,54 +201,43 @@ function handler ($type,$Event)
 	    $states = $regions[$Order->Billing->country];
 	    $billing_states=$states[$Order->Billing->state];
 		$Periodicity = '';
-		if(  $Order->Cart->Added->type == 'Subscription' )
-		{
-			if( isset( $Order->Cart->Added->option->recurring ) )
-			{
-				switch( $Order->Cart->Added->option->recurring['period'] )
-				{
-					case 'd':
-						$period = 'Day';
-						break;
-					case 'w':
-						$period = 'Week';
-						break;
-					case 'm':
-						$period = 'Month';
-						break;
-					case 'y':
-						$period = 'Year';
-						break;
-				}
-				$interval = $Order->Cart->Added->option->recurring['interval'];
-				
-				$Periodicity = ( $interval > 1 ) ? $interval . ' ' . $period . 's' : $period;
-				$Periodicity = ( $Periodicity == '3 Months' ) ? 'Quarter' : $Periodicity;
-				
-				if( !in_array( $Periodicity, $this->allowed_Periodicity ) )
-				{
-					new ShoppError(__("Selected Periodicity <b>".$Periodicity."</b> is not valid for Click & Pledge. We are allowing 'week', '2 Weeks', 'Month', '2 Months', 'Quarter', '6 Months', 'Year' only. Please contact administrator.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
-					shopp_redirect(shoppurl(false,'checkout'));
-				}
-				
-				if( $Order->Cart->Added->option->recurring['trial'] == 'on' )
-				{
-					new ShoppError(__("Click & Pledge do not support trail period for subscriptions. Please contact administrator.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
-					shopp_redirect(shoppurl(false,'checkout'));
-				}
-				
-				if( $Order->Cart->Added->option->recurring['cycles'] > 999 )
-				{
-					new ShoppError(__("Billing cycles should be between 2 and 999. Please contact administrator.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
-					shopp_redirect(shoppurl(false,'checkout'));
-				}				
-			}
-		}
+		
 		//echo '<pre>';
-		//print_r($Order->Cart->Added->option->recurring);
+		//print_r($this->baseop['currency']);
 		//die();
 	    $shipstates = $regions[$Order->Shipping->country];
-	    $shipping_states = $shipstates[$Order->Shipping->state]; 
+	    $shipping_states = $shipstates[$Order->Shipping->state];
+		if($this->settings['account_id'] == '' || $this->settings['guid'] == '')
+		{
+			new ShoppError(__("Invalid settings for Click & Pledge Payment. Please contact administrator",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
+		
+		if (!in_array($this->baseop['currency']['code'], array('USD', 'EUR', 'CAD', 'GBP'))) 
+		{
+			new ShoppError(__("Click & Pledge do no allow <b>".$this->baseop['currency']['code']."</b>. We are allowing USD, EUR, CAD, GBP",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
+			
+		if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
+		{
+			new ShoppError(__("We are not accepting <b>".$Order->Billing->cardtype."</b> type cards",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
+		
+		$cardnumber = $_POST['billing'];		
+		if( preg_match( '/^(X)/', $cardnumber['card'] )  )
+		{
+			new ShoppError(__("Invalid Credit Card Number.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
+		
+		if( $this->CreditCardCompany($Order->Billing->card) == 'invalid'  )
+		{
+			new ShoppError(__("Invalid Credit Card Number.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
+		
 		
 		if( $Order->Billing->cvv == '' || !preg_match( '/^\d{1,4}$/', $Order->Billing->cvv )  )
 		{
@@ -409,7 +437,7 @@ function handler ($type,$Event)
 		$creditcard=$dom->createElement('CreditCard','');
 		$creditcard=$paymentmethod->appendChild($creditcard);
 
-		$credit_name=$dom->createElement('NameOnCard',$Order->Billing->cardholder);
+		$credit_name=$dom->createElement('NameOnCard',$Order->Billing->name);
 		$credit_name=$creditcard->appendChild($credit_name);
 		
 		$credit_number=$dom->createElement('CardNumber',$Order->Billing->card);
@@ -425,13 +453,63 @@ function handler ($type,$Event)
 		
 		$orderitemlist=$dom->createElement('OrderItemList','');
         $orderitemlist=$order->appendChild($orderitemlist);		
-
 		
+		$Items = shopp_cart_items();
 		$sku_id="";
 		$items = 0;
-		foreach($Order->Cart->contents as $i => $Item) {
-						
-			    $orderitem=$dom->createElement('OrderItem','');
+		$is_recurring = false;
+		$recurring_method = $Periodicity = '';
+		$cycles = $calctax = $TotalTax = $TotalDiscount = $interval = $UnitDiscount = 0;
+		foreach($Items as $i => $Item) {
+				//echo '<pre>';
+				//print_r($Item);
+				//die();
+				if($Item->type == 'Subscription' && isset($Item->option->recurring['period']) && isset($Item->option->recurring['interval']))
+				{
+					if( isset( $Item->option->recurring ) )
+					{
+						switch( $Item->option->recurring['period'] )
+						{
+							case 'd':
+								$period = 'Day';
+								break;
+							case 'w':
+								$period = 'Week';
+								break;
+							case 'm':
+								$period = 'Month';
+								break;
+							case 'y':
+								$period = 'Year';
+								break;
+						}
+					}
+					$interval = $Item->option->recurring['interval'];
+					
+					$Periodicity = ( $interval > 1 ) ? $interval . ' ' . $period . 's' : $period;
+					$Periodicity = ( $Periodicity == '3 Months' ) ? 'Quarter' : $Periodicity;
+					if( $Item->option->recurring['trial'] == 'on' )
+					{
+						new ShoppError(__("Click & Pledge do not support trail period for subscriptions. Please contact administrator.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+						shopp_redirect(shoppurl(false,'checkout'));
+					}
+					
+					if( !in_array( $Periodicity, $this->allowed_Periodicity ) )
+					{
+						new ShoppError(__("Selected Periodicity <b>".$Periodicity."</b> is not valid for Click & Pledge. We are allowing 'week', '2 Weeks', 'Month', '2 Months', 'Quarter', '6 Months', 'Year' only. Please contact administrator.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+						shopp_redirect(shoppurl(false,'checkout'));
+					}
+					
+					if( $Item->option->recurring['cycles'] > 999 )
+					{
+						new ShoppError(__("Billing cycles should be between 2 and 999. Please contact administrator.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+						shopp_redirect(shoppurl(false,'checkout'));
+					}
+					$is_recurring = true;
+					$recurring_method = $Item->type;
+					$cycles = $Item->option->recurring['cycles'];
+				}
+				$orderitem=$dom->createElement('OrderItem','');
 				$orderitem=$orderitemlist->appendChild($orderitem);
 				
 				$f_unit_price =  number_format($Item->unitprice,2,'.','');
@@ -440,7 +518,7 @@ function handler ($type,$Event)
 				$itemid=$dom->createElement('ItemID',substr($Item->product, 0, 25));
 				$itemid=$orderitem->appendChild($itemid);
 				
-				$itemid=$dom->createElement('ItemName',$Item->name.((!empty($Item->option->label))?' '.$Item->option->label:''));
+				$itemid=$dom->createElement('ItemName',$Item->name);
 				$itemid=$orderitem->appendChild($itemid);
 				
 				$quntity=$dom->createElement('Quantity',$Item->quantity);
@@ -452,25 +530,23 @@ function handler ($type,$Event)
 				//$unit_deduct=$dom->createElement('UnitDeductible','000');
 				//$unit_deduct=$orderitem->appendChild($unit_deduct);			
 				
-				if( isset( $Item->unittax ) && $Item->unittax != 0 )
+				if( isset( $Item->unittax ) && $Item->unittax != 0 && $this->shoppmeta['tax_inclusive'] == 'off' )
 				{
+					$calctax = $calctax + number_format(($Item->unittax * $Item->quantity),2,'.','');
 					$unit_tax=$dom->createElement('UnitTax',number_format($Item->unittax,2,'.','')*100);
 					$unit_tax=$orderitem->appendChild($unit_tax);
 				}
 				
 				if( isset( $Item->discount ) && $Item->discount != 0 )
 				{
+					$UnitDiscount = $UnitDiscount + number_format(($Item->discount * $Item->quantity),2,'.','');
 					$unit_disc=$dom->createElement('UnitDiscount',number_format($Item->discount,2,'.','')*100);
 					$unit_disc=$orderitem->appendChild($unit_disc);
 				}
 				
-				if($Item->sku==""){
-				//$sku_id=$Item->product;	
-				$sku_id=$Item->sku;				
-				}else  {
-				$sku_id=$Item->sku;
-				}
 				
+				$sku_id=$Item->sku;				
+								
 				if( $sku_id != '' )
 				{
 					$sku_code=$dom->createElement('SKU',substr($sku_id, 0, 25));
@@ -478,38 +554,22 @@ function handler ($type,$Event)
 				}	
 		}
 			
-		
-		
-	if(isset($Order->Cart->shipping) && !empty($Order->Cart->shipping)){
-		
+
+	 if(shopp('cart','has-ship-costs'))
+	 {
+		//echo shopp('cart.get-shipping', 'number=on');
+		//die('gddgdg gdgd');
 		$shipping=$dom->createElement('Shipping','');
 		$shipping=$order->appendChild($shipping);
-			foreach ($Order->Cart->shipping as $shipp)		{				
-					
-					if($shipp->slug==$Order->Shipping->method){
-					
-					$shipping_method=$dom->createElement('ShippingMethod',$shipp->name);
-					$shipping_method=$shipping->appendChild($shipping_method);
-					//print_r($shipp);
-					$shipping_value = $dom->createElement('ShippingValue',number_format($Order->Cart->Totals->shipping, 2, '.', '')*100);
-					$shipping_value=$shipping->appendChild($shipping_value);
-					//$shiptax=number_format(max($Order->Cart->Totals->shipping,1.00), 2, '.', '')*$Order->Cart->Totals->taxrate;
-					if( $shipp->amount != $Order->Cart->Totals->shipping )
-					{
-						$shiptax = number_format( ($shipp->amount - $Order->Cart->Totals->shipping), 2, '.', '' )*100;		
-						$shipping_tax=$dom->createElement('ShippingTax',$shiptax);
-						$shipping_tax=$shipping->appendChild($shipping_tax);
-					}
-				}
-					
-
-			}
-			
+							
+		$shipping_method=$dom->createElement('ShippingMethod',shopp('shipping', 'get-option-name'));
+		$shipping_method=$shipping->appendChild($shipping_method);
+		//print_r($shipp);
+		$shipping_value = $dom->createElement('ShippingValue',number_format(shopp('cart.get-shipping','number=on'), 2, '.', '')*100);
+		$shipping_value=$shipping->appendChild($shipping_value);	
 		}
 				
-//echo '<pre>';
-//print_r($Order->Cart);
-//die();
+		
         $receipt=$dom->createElement('Receipt','');
 		$receipt=$order->appendChild($receipt);
 		
@@ -524,13 +584,13 @@ function handler ($type,$Event)
 
 		if( $this->settings['ThankYouMessage'] != '')
 		{
-			$recipt_thanks=$dom->createElement('ThankYouMessage','<![CDATA['.$this->settings['ThankYouMessage'].']]>');
+			$recipt_thanks=$dom->createElement('ThankYouMessage',$this->settings['ThankYouMessage']);
 			$recipt_thanks=$receipt->appendChild($recipt_thanks);
 		}
 		
 		if( $this->settings['TermsCondition'] != '')
 		{
-			$recipt_terms=$dom->createElement('TermsCondition','<![CDATA['.$this->settings['TermsCondition'].']]>');
+			$recipt_terms=$dom->createElement('TermsCondition',$this->settings['TermsCondition']);
 			$recipt_terms=$receipt->appendChild($recipt_terms);
 		}
 		
@@ -554,25 +614,26 @@ function handler ($type,$Event)
 		$trans_desc=$dom->createElement('DynamicDescriptor','DynamicDescriptor');
 		$trans_desc=$transation->appendChild($trans_desc); 
 		
-		if(  $Order->Cart->Added->type == 'Subscription' && ( isset( $Order->Cart->Added->option->recurring ) ) )
+		
+		if(  $is_recurring )
 		{
 			$trans_recurr=$dom->createElement('Recurring','');
 			$trans_recurr=$transation->appendChild($trans_recurr);
-			if( $Order->Cart->Added->option->recurring['cycles'] == 0 )
+			if( $cycles == 0 )
 			{
 				$total_installment=$dom->createElement('Installment',999);
 				$total_installment=$trans_recurr->appendChild($total_installment);
 			}
 			else
 			{
-				$total_installment=$dom->createElement('Installment',$Order->Cart->Added->option->recurring['cycles']);
+				$total_installment=$dom->createElement('Installment',$cycles);
 				$total_installment=$trans_recurr->appendChild($total_installment);
 			}
 			
 			$total_periodicity=$dom->createElement('Periodicity',$Periodicity);
 			$total_periodicity=$trans_recurr->appendChild($total_periodicity);
 		
-			$RecurringMethod=$dom->createElement('RecurringMethod','Subscription');
+			$RecurringMethod=$dom->createElement('RecurringMethod',$recurring_method);
 			$RecurringMethod=$trans_recurr->appendChild($RecurringMethod);
 		
 		}
@@ -580,66 +641,82 @@ function handler ($type,$Event)
 		$trans_totals=$dom->createElement('CurrentTotals','');
 		$trans_totals=$transation->appendChild($trans_totals);
 		
-		if( $Order->Cart->Totals->discount != '' && $Order->Cart->Totals->discount != 0 )
+		if( shopp('cart.get-discount','number=on') )
 		{
-			$total_discount=$dom->createElement('TotalDiscount',number_format($Order->Cart->Totals->discount, 2, '.', '')*100);
+			$TotalDiscount = shopp('cart.get-discount','number=on');
+			
+			$total_discount=$dom->createElement('TotalDiscount',number_format(shopp('cart.get-discount','number=on'), 2, '.', '')*100);
 			$total_discount=$trans_totals->appendChild($total_discount);
+			
         }
 		
-		if( $Order->Cart->Totals->tax != '' && $Order->Cart->Totals->tax != 0 )
+		if( shopp('cart.get-tax', 'number=on') && $this->shoppmeta['tax_inclusive'] == 'off' )
 		{
-			$total_tax=$dom->createElement('TotalTax',number_format($Order->Cart->Totals->tax, 2, '.', '')*100);
+			$TotalTax = shopp('cart.get-tax', 'number=on');
+			$total_tax=$dom->createElement('TotalTax',number_format($TotalTax, 2, '.', '')*100);
 			$total_tax=$trans_totals->appendChild($total_tax);
 		}
 		
-		if( $Order->Cart->Totals->shipping != '' && $Order->Cart->Totals->shipping != 0 )
+		if( shopp('cart','has-ship-costs') && shopp('cart.get-shipping','number=on') )
 		{
-			$total_ship=$dom->createElement('TotalShipping',number_format($Order->Cart->Totals->shipping, 2, '.', '')*100);
+			$TotalShipping = shopp('cart.get-shipping','number=on');
+			$total_ship=$dom->createElement('TotalShipping',number_format($TotalShipping, 2, '.', '')*100);
 			$total_ship=$trans_totals->appendChild($total_ship);
 		}
 		
 		//$total_deduct=$dom->createElement('TotalDeductible','000');
 		//$total_deduct=$trans_totals->appendChild($total_deduct);
-
-		$total_amount=$dom->createElement('Total',number_format($Order->Cart->Totals->total, 2, '.', '')*100);
+		//$Total = shopp('cart.get-total', 'number=on') + $TotalDiscount;
+		$Total = shopp('cart.get-total', 'number=on');
+		//echo shopp('cart.get-total', 'number=on');
+		//die();
+		//echo shopp('cart.get-total', 'number=on').'%%'.$TotalDiscount;
+		//die();
+		$total_amount=$dom->createElement('Total',number_format($Total, 2, '.', '')*100);
 		$total_amount=$trans_totals->appendChild($total_amount);
 		
 		$couponcode="";
-		foreach ($Order->Cart->discounts as $dis){
-		
-			foreach($dis->rules as $disamnt){
-				if($disamnt['property']=="Promo code"){
-		
-					$couponcode.= $disamnt['value'];
-					$couponcode.= ";";
-				}		
+		if(shopp('cart','has-promos')) {
+			while(shopp('cart','promos')){		
+				$name = shopp('cart','get-promo-name');
+				$table = ShoppDatabaseObject::tablename('promo');
+				$codeObj = sDB::query("SELECT * FROM $table where name = '".$name."'");
+				$code = unserialize( $codeObj->rules );
+				foreach($code as $i => $val) {
+				$couponcode.= $val['value'];
+				$couponcode.= ";";
+				}
 			}
 		}
-	
+
 		if( $couponcode != '' )
 		{
 			$trans_coupon=$dom->createElement('CouponCode',substr($couponcode,0,-1));
 			$trans_coupon=$transation->appendChild($trans_coupon);
 		}
 		
-		/*
-		if( $Order->Cart->Totals->discount != '' && $Order->Cart->Totals->discount != 0 )
+		
+		if( shopp('cart.get-discount','number=on') )
 		{
-			$trans_coupon_discount=$dom->createElement('TransactionDiscount',number_format($Order->Cart->Totals->discount, 2, '.', '')*100);
+			$TransactionDiscount = shopp('cart.get-discount','number=on') - $UnitDiscount;
+			$trans_coupon_discount=$dom->createElement('TransactionDiscount',number_format($TransactionDiscount, 2, '.', '')*100);
 			$trans_coupon_discount=$transation->appendChild($trans_coupon_discount);
 		}
-		*/
-		/*
-		if( $Order->Cart->Totals->tax != '' && $Order->Cart->Totals->tax != 0 )
+		
+		
+		if( shopp('cart.get-tax', 'number=on') && $this->shoppmeta['tax_inclusive'] == 'off' )
 		{
-			$trans_tax=$dom->createElement('TransactionTax',number_format($Order->Cart->Totals->tax, 2, '.', '')*100);
-			$trans_tax=$transation->appendChild($trans_tax);		
+			$transaction_tax = shopp('cart.get-tax', 'number=on') - $calctax;
+			if($transaction_tax) {
+			$trans_tax=$dom->createElement('TransactionTax',number_format($transaction_tax, 2, '.', '')*100);
+			$trans_tax=$transation->appendChild($trans_tax);
+			}			
 		}
-		*/
+		
         $strParam = $dom->saveXML();
 		//echo $strParam;
 		//echo '<pre>';
-		//print_r( $Order->Cart->downloads );
+		//print_r( $Order );
 		//die();
 		$response=array();
 		$connect = array('soap_version' => SOAP_1_1, 'trace' => 1, 'exceptions' => 0);
@@ -693,7 +770,9 @@ function handler ($type,$Event)
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 	
+	
 	$capture = ( count( $Order->Cart->shipped ) > 0 ) ? true : false;
+	
 	$Billing = $this->Order->Billing;
 	shopp_add_order_event($Event->order,$type,array(
 			'txnid' => $VaultGUID,
@@ -704,7 +783,7 @@ function handler ($type,$Event)
 			'paytype' => $Billing->cardtype,
 			'amount' => $Event->amount,
 			'gateway' => $this->module,
-			'capture' => $capture										// Capture flag
+			'capture' => true,										// Capture flag
 		));		
 	//shopp_redirect( shoppurl(false,'thanks') );	
 	}	
@@ -723,71 +802,73 @@ function handler ($type,$Event)
 			'size' => 30,
 			'label' => __('Enter your GUID','Shopp')
 		));
-		$this->ui->textarea(0,array(
+		$this->ui->textarea(1,array(
 			'name' => 'OrganizationInformation',
 			'value' => $this->settings['OrganizationInformation'],
 			'size' => 30,
-			'label' => __('Organization Information','Shopp')
+			'label' => __('Organization Information<br>(Maximum: 1500 characters)','Shopp'),
 		));
-		$this->ui->textarea(0,array(
+		$this->ui->textarea(1,array(
 			'name' => 'ThankYouMessage',
 			'value' => $this->settings['ThankYouMessage'],
 			'size' => 30,
-			'label' => __('Thank You Message','Shopp')
+			'label' => __('Thank You Message<br>(Maximum: 500 characters)','Shopp')
 		));
-		$this->ui->textarea(0,array(
+		$this->ui->textarea(1,array(
 			'name' => 'TermsCondition',
 			'value' => $this->settings['TermsCondition'],
 			'size' => 30,
-			'label' => __('Terms Conditions','Shopp')
+			'label' => __('Terms Conditions<br>(Maximum: 1500 characters)','Shopp')
 		));
 		
 		//Second Row
+		/*
 		$this->ui->menu(1,array(
 			'name' => 'currency',
 			'selected' => $this->settings['currency'],
 			'label'=>__('Select Currency','Shopp')
 		),$currency);
-		$this->ui->checkbox(1,array(
+		*/
+		$this->ui->checkbox(0,array(
 			'name' => 'Visa',
 			'checked' => $this->settings['Visa'],
 			'label'=>__('Visa','Shopp')
 		));
-		$this->ui->checkbox(1,array(
+		$this->ui->checkbox(0,array(
 			'name' => 'MC',
 			'checked' => $this->settings['MC'],
 			'label'=>__('MasterCard','Shopp')
 		));
-		$this->ui->checkbox(1,array(
+		$this->ui->checkbox(0,array(
 			'name' => 'Disc',
 			'checked' => $this->settings['Disc'],
 			'label'=>__('Discover Card','Shopp')
 		));
-		$this->ui->checkbox(1,array(
+		$this->ui->checkbox(0,array(
 			'name' => 'Amex',
 			'checked' => $this->settings['Amex'],
 			'label'=>__('American Express','Shopp')
 		));	
-		$this->ui->checkbox(1,array(
+		$this->ui->checkbox(0,array(
 			'name' => 'JCB',
 			'checked' => $this->settings['JCB'],
 			'label'=>__('JCB','Shopp')
 		));		
 		
-		$this->ui->p(1,array(
+		$this->ui->p(0,array(
 			'content' => '<span style="width: 300px;">Limit acceptable card types from above list</span>'
 		));
-		$this->ui->checkbox(1,array(
+		$this->ui->checkbox(0,array(
 			'name' => 'NotificationEmail',
 			'checked' => ($this->settings['NotificationEmail'] == "on"),
 			'label' => sprintf(__('Send e-mail to customer a receipt based on your account settings.','Shopp'))
 		));
-		$this->ui->checkbox(1,array(
+		$this->ui->checkbox(0,array(
 			'name' => 'testmode',
 			'checked' => ($this->settings['testmode'] == "on"),
 			'label' => sprintf(__('Test Mode','Shopp'))
 		));		
-	}
+	}	 
 } // END class ClickandPledge
 
 ?>
