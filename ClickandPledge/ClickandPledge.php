@@ -219,7 +219,8 @@ function handler ($type,$Event)
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 			
-		if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
+		//if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
+		if(!in_array($_POST['billing']['cardtype'], $this->settings['cards']))
 		{
 			new ShoppError(__("We are not accepting <b>".$Order->Billing->cardtype."</b> type cards",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
