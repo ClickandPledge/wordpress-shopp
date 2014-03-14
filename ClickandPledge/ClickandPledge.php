@@ -218,16 +218,16 @@ function handler ($type,$Event)
 			new ShoppError(__("Click & Pledge do no allow <b>".$this->baseop['currency']['code']."</b>. We are allowing USD, EUR, CAD, GBP",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
-			
+	
 		//if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
-		if(!in_array($_POST['billing']['cardtype'], $this->settings['cards']))
+		if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
 		{
 			new ShoppError(__("We are not accepting <b>".$Order->Billing->cardtype."</b> type cards",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 		
-		$cardnumber = $_POST['billing'];		
-		if( preg_match( '/^(X)/', $cardnumber['card'] )  )
+		$cardnumber = $Order->Billing->card;		
+		if( preg_match( '/^(X)/', $cardnumber )  )
 		{
 			new ShoppError(__("Invalid Credit Card Number.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
