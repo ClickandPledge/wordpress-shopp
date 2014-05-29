@@ -4,13 +4,15 @@
  * @class ClickandPledge
  *
  * @author Click & Pledge Team
- * @version 1.3
+ * @C&P version 1.3.1
  * @copyright Click & Pledge, 27 Oct, 2011
  * @package Shopp
  * @since 1.2
  * @subpackage ClickandPledge
  *
  * $Id: ClickandPledge.php 1913 2011-05-18 20:03:58Z jond $
+ * @Last Update: May 29, 2014
+ * @Tested with: Shopp 1.3.1
  **/
 
 class ClickandPledge extends GatewayFramework implements GatewayModule {
@@ -203,7 +205,7 @@ function handler ($type,$Event)
 		$Periodicity = '';
 		
 		//echo '<pre>';
-		//print_r($this->baseop['currency']);
+		//print_r($Order->Customer);
 		//die();
 	    $shipstates = $regions[$Order->Shipping->country];
 	    $shipping_states = $shipstates[$Order->Shipping->state];
@@ -218,41 +220,15 @@ function handler ($type,$Event)
 			new ShoppError(__("Click & Pledge do no allow <b>".$this->baseop['currency']['code']."</b>. We are allowing USD, EUR, CAD, GBP",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
-	
-	
-		$cardtype = $Order->Billing->cardtype;
-		switch($Order->Billing->cardtype)
-		{
-			case 'Visa':
-				$cardtype = 'Visa';
-			break;
-			case 'MasterCard':
-				$cardtype = 'MC';
-			break;
-			case 'Discover Card':
-				$cardtype = 'Disc';
-			break;
-			case 'American Express':
-				$cardtype = 'Amex';
-			break;
-			case 'JCB':
-				$cardtype = 'JCB';
-			break;			
-		}
-
-	//	echo '<pre>';
-	//print_r($cardtype);
-	//print_r($this->settings['cards']);
-	//die();
-		//if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
-		if(!in_array($cardtype, $this->settings['cards']))
+			
+		if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
 		{
 			new ShoppError(__("We are not accepting <b>".$Order->Billing->cardtype."</b> type cards",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 		
-		$cardnumber = $Order->Billing->card;		
-		if( preg_match( '/^(X)/', $cardnumber )  )
+		$cardnumber = $_POST['billing'];		
+		if( preg_match( '/^(X)/', $cardnumber['card'] )  )
 		{
 			new ShoppError(__("Invalid Credit Card Number.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
@@ -264,6 +240,11 @@ function handler ($type,$Event)
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 		
+		if( $Order->Billing->name == ''  )
+		{
+			new ShoppError(__("Please enter Billing Name.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
 		
 		if( $Order->Billing->cvv == '' || !preg_match( '/^\d{1,4}$/', $Order->Billing->cvv )  )
 		{
@@ -463,8 +444,20 @@ function handler ($type,$Event)
 		$creditcard=$dom->createElement('CreditCard','');
 		$creditcard=$paymentmethod->appendChild($creditcard);
 
-		$credit_name=$dom->createElement('NameOnCard',$Order->Billing->name);
-		$credit_name=$creditcard->appendChild($credit_name);
+		if($Order->Billing->name != '') 
+		{
+			$credit_name=$dom->createElement('NameOnCard',$Order->Billing->name);
+			$credit_name=$creditcard->appendChild($credit_name);
+		} 
+		else 
+		{
+			$name = substr($Order->Customer->firstname, 0, 50);
+			if($Order->Customer->lastname)
+			$name .= ' '.substr($Order->Customer->lastname, 0, 50);
+			
+			$credit_name=$dom->createElement('NameOnCard',$name);
+			$credit_name=$creditcard->appendChild($credit_name);
+		}
 		
 		$credit_number=$dom->createElement('CardNumber',$Order->Billing->card);
 		$credit_number=$creditcard->appendChild($credit_number);
