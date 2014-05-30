@@ -4,14 +4,14 @@
  * @class ClickandPledge
  *
  * @author Click & Pledge Team
- * @C&P version 1.3.1
+ * @C&P version 1.3.2
  * @copyright Click & Pledge, 27 Oct, 2011
  * @package Shopp
  * @since 1.2
  * @subpackage ClickandPledge
  *
  * $Id: ClickandPledge.php 1913 2011-05-18 20:03:58Z jond $
- * @Last Update: May 29, 2014
+ * @Last Update: May 30, 2014
  * @Tested with: Shopp 1.3.1
  **/
 
@@ -25,7 +25,8 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 	var $buttonurl = '';
 	var $cards = array("visa","mc","disc","amex","jcb");
 	// Internals
-	var $baseop = array();	
+	var $baseop = array();
+	var $creditcard_names = array();
 	
 	var $currencies = array("USD", "AUD", "BRL", "CAD", "CZK", "DKK", "EUR", "HKD", "HUF",
 	 						"ILS", "JPY", "MYR", "MXN", "NOK", "NZD", "PHP", "PLN", "GBP",
@@ -117,16 +118,34 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 		// Autoset useable payment cards
 		$this->settings['cards'] = array();
 		
-		if( $this->settings['Visa'] == 'on' )
+		if( $this->settings['Visa'] == 'on' ) 
+		{
 			$this->settings['cards'][] = 'Visa';
-		if( $this->settings['MC'] == 'on' )
+			$this->creditcard_names[] = 'Visa';
+		}
+		if( $this->settings['MC'] == 'on' ) 
+		{
 			$this->settings['cards'][] = 'MC';
-		if( $this->settings['Disc'] == 'on' )
+			$this->creditcard_names[] = 'MasterCard';
+			$this->creditcard_names[] = 'MC';
+		}
+		if( $this->settings['Disc'] == 'on' ) 
+		{
 			$this->settings['cards'][] = 'Disc';
+			$this->creditcard_names[] = 'Discover Card';
+			$this->creditcard_names[] = 'Disc';
+		}
 		if( $this->settings['Amex'] == 'on' )
+		{
 			$this->settings['cards'][] = 'Amex';
+			$this->creditcard_names[] = 'American Express';
+			$this->creditcard_names[] = 'Amex';
+		}
 		if( $this->settings['JCB'] == 'on' )
+		{
 			$this->settings['cards'][] = 'JCB';
+			$this->creditcard_names[] = 'JCB';
+		}
 		
 		
 		if( count( $this->settings['cards'] ) == 0 )
@@ -205,8 +224,8 @@ function handler ($type,$Event)
 		$Periodicity = '';
 		
 		//echo '<pre>';
-		//print_r($Order->Customer);
-		//die();
+		//print_r($Order);
+		//die('kkkkkkkkkkkkkkkkkkk');
 	    $shipstates = $regions[$Order->Shipping->country];
 	    $shipping_states = $shipstates[$Order->Shipping->state];
 		if($this->settings['account_id'] == '' || $this->settings['guid'] == '')
@@ -221,7 +240,7 @@ function handler ($type,$Event)
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 			
-		if(!in_array($Order->Billing->cardtype, $this->settings['cards']))
+		if(!in_array($Order->Billing->cardtype, $this->creditcard_names))
 		{
 			new ShoppError(__("We are not accepting <b>".$Order->Billing->cardtype."</b> type cards",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
