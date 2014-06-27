@@ -1,0 +1,36 @@
+-----------------------------------------------------------------------------
+Version 2.2
+- Fix the issue for 'Promo Code'.
+- Tested with Shopp 1.3.4 and WordPress 3.9.1.
+- Last Update:June 27, 2014
+
+-----------------------------------------------------------------------------
+Version 2.1
+- Fix the issue for accepted credit cards.
+- Tested with Shopp 1.3.2 and WordPress 3.8.1.
+- Reference: https://forums.clickandpledge.com/showthread.php?t=1867
+- Last Update:May 30, 2014
+
+-----------------------------------------------------------------------------
+Version 2.1
+- Fix the issue for 'NameOnCard'.
+- Tested with Shopp 1.3.2 and WordPress 3.9.1.
+- Last Update:Mar 14, 2014
+
+-----------------------------------------------------------------------------
+Version 1.2
+- Fix the issue for accepted credit cards.
+- Tested with Shopp 1.3.2 and WordPress 3.8.1
+- Last Update:Mar 14, 2014
+
+-----------------------------------------------------------------------------
+Version 1.1
+- Supports Shopp 1.3 with WordPress 3.8
+- Last Update:Feb 7, 2014
+
+-----------------------------------------------------------------------------
+Version 1.0  
+- Integrate Shopp 1.2.6 with WordPress 3.5.1.
+- Handles Shipped and Virtual Poducts. 
+- Handle Organization Information, Thank You Message, allowed Credti Cards dynamically
+- Last Update:June 6, 2013

@@ -4,15 +4,15 @@
  * @class ClickandPledge
  *
  * @author Click & Pledge Team
- * @C&P version 1.3.2
+ * @C&P version 2.2
  * @copyright Click & Pledge, 27 Oct, 2011
  * @package Shopp
  * @since 1.2
  * @subpackage ClickandPledge
  *
  * $Id: ClickandPledge.php 1913 2011-05-18 20:03:58Z jond $
- * @Last Update: May 30, 2014
- * @Tested with: Shopp 1.3.1
+ * @Last Update: June 27, 2014
+ * @Tested with: Shopp 1.3.4
  **/
 
 class ClickandPledge extends GatewayFramework implements GatewayModule {
@@ -156,7 +156,7 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 			}
 		}
 		
-		
+	
 		add_action('shopp_clickandpledge_sale',array(&$this,'sale'));
 		add_action('shopp_clickandpledge_auth',array(&$this,'auth'));
 		add_action('shopp_clickandpledge_capture',array(&$this,'capture'));
@@ -167,10 +167,15 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 		$this->handler('captured',$Event);
 	}
 	
-	function auth (OrderEventMessage $Event) {		
+	function auth (OrderEventMessage $Event) {
 		$this->handler('authed',$Event);
 	}
 	
+	/*
+	public function capture ( OrderEventMessage $Event ) {
+		$this->handler('captured', $Event);
+	}
+	*/
 	function actions () {		
 		add_action('shopp_process_checkout', array(&$this,'checkout'),9);
 		add_action('shopp_init_confirmation',array(&$this,'confirmation'));
@@ -212,6 +217,11 @@ class ClickandPledge extends GatewayFramework implements GatewayModule {
 				return "invalid";
 	 }
 	 
+	 function safeString( $str,  $length=1, $start=0 )
+	{
+		return substr( htmlspecialchars( $str ), $start, $length );
+	}
+	 
 function handler ($type,$Event) 
 {
 		if(!isset($Event->txnid)) $Event->txnid = time();
@@ -223,10 +233,7 @@ function handler ($type,$Event)
 	    $billing_states=$states[$Order->Billing->state];
 		$Periodicity = '';
 		
-		//echo '<pre>';
-		//print_r($Order);
-		//die('kkkkkkkkkkkkkkkkkkk');
-	    $shipstates = $regions[$Order->Shipping->country];
+		$shipstates = $regions[$Order->Shipping->country];
 	    $shipping_states = $shipstates[$Order->Shipping->state];
 		if($this->settings['account_id'] == '' || $this->settings['guid'] == '')
 		{
@@ -253,7 +260,8 @@ function handler ($type,$Event)
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
 		
-		if( $this->CreditCardCompany($Order->Billing->card) == 'invalid'  )
+		$cnumber = ($Order->Billing->card) ? $Order->Billing->card : $cardnumber['card'];
+		if( $this->CreditCardCompany($cnumber) == 'invalid'  )
 		{
 			new ShoppError(__("Invalid Credit Card Number.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
@@ -269,8 +277,9 @@ function handler ($type,$Event)
 		{
 			new ShoppError(__("You did not enter a valid security ID for the card you provided. The security ID is a 3 or 4 digit number found on the back of the credit card.",'Shopp'),'c&p_express_transacton_error',SHOPP_TRXN_ERR);
 			shopp_redirect(shoppurl(false,'checkout'));
-		}		
-		 $dom = new DOMDocument('1.0', 'UTF-8');
+		}
+		
+		$dom = new DOMDocument('1.0', 'UTF-8');
          $root = $dom->createElement('CnPAPI', '');
          $root->setAttribute("xmlns","urn:APISchema.xsd");
          $root = $dom->appendChild($root);
@@ -288,7 +297,7 @@ function handler ($type,$Event)
 		 $applicationname=$dom->createElement('Name','Salesforce:CnP_PaaS_SC_Shopp');
 		 $applicationid=$application->appendChild($applicationname);
 			
-		 $applicationversion=$dom->createElement('Version','2.0');
+		 $applicationversion=$dom->createElement('Version','2.2');
 		 $applicationversion=$application->appendChild($applicationversion);
     
          $request = $dom->createElement('Request', '');
@@ -302,6 +311,9 @@ function handler ($type,$Event)
 	     
          $ipaddress=$dom->createElement('IPAddress',$_SERVER['REMOTE_ADDR']);
 		 $ipaddress=$operation->appendChild($ipaddress);
+		 
+		$httpreferrer=$dom->createElement('UrlReferrer',$_SERVER['HTTP_REFERER']);
+		$httpreferrer=$operation->appendChild($httpreferrer);
 		
 		 $authentication=$dom->createElement('Authentication','');
 		 $authentication=$request->appendChild($authentication);	
@@ -332,56 +344,55 @@ function handler ($type,$Event)
 			 $billinginfo=$dom->createElement('BillingInformation','');
 			 $billinginfo=$cardholder->appendChild($billinginfo);
 			 
-			 $billfirst_name=$dom->createElement('BillingFirstName',substr($Order->Customer->firstname, 0, 50));
+			 $billfirst_name=$dom->createElement('BillingFirstName',$this->safeString($Order->Customer->firstname, 50));
 			 $billfirst_name=$billinginfo->appendChild($billfirst_name);
 		
-			 $billlast_name=$dom->createElement('BillingLastName',substr($Order->Customer->lastname, 0, 50));
+			 $billlast_name=$dom->createElement('BillingLastName',$this->safeString($Order->Customer->lastname, 50));
 			 $billlast_name=$billinginfo->appendChild($billlast_name);
 
 			 if( $Order->Customer->email != '' )
 			 {
-				$bill_email=$dom->createElement('BillingEmail',substr($Order->Customer->email, 0, 255));
+				$bill_email=$dom->createElement('BillingEmail',$this->safeString($Order->Customer->email, 255));
 				$bill_email=$billinginfo->appendChild($bill_email);
 			 }
 			
 			 if( $Order->Customer->phone != '' )
 			 {
-				$bill_phone=$dom->createElement('BillingPhone', $Order->Customer->phone ? $Order->Customer->phone : "000000" );
+				$bill_phone=$dom->createElement('BillingPhone', $Order->Customer->phone ? $this->safeString($Order->Customer->phone, 50) : "000000" );
 				$bill_phone=$billinginfo->appendChild($bill_phone);
 			 }
 		}//BillingInformation Node end
-
 		
 		$billingaddress=$dom->createElement('BillingAddress','');
 		$billingaddress=$cardholder->appendChild($billingaddress);
 
 		if( $Order->Billing->address != '' )
 		{
-			$billingaddress1=$dom->createElement('BillingAddress1',substr($Order->Billing->address,0,60));
+			$billingaddress1=$dom->createElement('BillingAddress1',$this->safeString($Order->Billing->address, 100));
 			$billingaddress1=$billingaddress->appendChild($billingaddress1);
 		}
 		
 		if( $Order->Billing->xaddress != '' )
 		{
-			$billingaddress2=$dom->createElement('BillingAddress2',substr($Order->Billing->xaddress,0,60));
+			$billingaddress2=$dom->createElement('BillingAddress2',$this->safeString($Order->Billing->xaddress, 100));
 			$billingaddress2=$billingaddress->appendChild($billingaddress2);
 		}
 				
 		if( $Order->Billing->city != '' )
 		{
-			$billing_city=$dom->createElement('BillingCity',substr($Order->Billing->city, 0, 40));
+			$billing_city=$dom->createElement('BillingCity',$this->safeString($Order->Billing->city, 50));
 			$billing_city=$billingaddress->appendChild($billing_city);
 		}
 		
 		if( $Order->Billing->state != '' )
 		{
-			$billing_state=$dom->createElement('BillingStateProvince',substr((!empty($billing_states) && $billing_states != 'Other') ? $billing_states : $Order->Billing->state, 0, 40));
+			$billing_state=$dom->createElement('BillingStateProvince',$this->safeString((!empty($billing_states) && $billing_states != 'Other') ? $billing_states : $Order->Billing->state, 50));
 			$billing_state=$billingaddress->appendChild($billing_state);
 		}
 		
 		if( $Order->Billing->postcode != '' )
 		{
-			$billing_zip=$dom->createElement('BillingPostalCode',substr($Order->Billing->postcode, 0, 20));
+			$billing_zip=$dom->createElement('BillingPostalCode',$this->safeString($Order->Billing->postcode, 20));
 			$billing_zip=$billingaddress->appendChild($billing_zip);
 		}
 		
@@ -392,41 +403,71 @@ function handler ($type,$Event)
 		}
 		
 		
-		if( $Order->Shipping->address != '' &&  $Order->Shipping->city != '' && $Order->Shipping->country != '' )
+		if( ($Order->Shipping->name) || ($Order->Shipping->address != '' &&  $Order->Shipping->city != '' && $Order->Shipping->country != '') )
 		{
 			$shippinginfo=$dom->createElement('ShippingInformation','');
 			$shippinginfo=$cardholder->appendChild($shippinginfo);
+			
+			if($Order->Shipping->name != '')
+			{
+				$ShippingContactInformation=$dom->createElement('ShippingContactInformation','');
+				$ShippingContactInformation=$shippinginfo->appendChild($ShippingContactInformation);
+				$parts = explode(' ', $Order->Shipping->name);
+				if(count($parts) == 2) {
+					if(isset($parts[0])) {
+					$ShippingFirstName=$dom->createElement('ShippingFirstName',$this->safeString($parts[0], 50));
+					$ShippingFirstName=$ShippingContactInformation->appendChild($ShippingFirstName);
+					}
+					if(isset($parts[1])) {
+					$ShippingLastName=$dom->createElement('ShippingLastName',$this->safeString($parts[1], 50));
+					$ShippingFirstName=$ShippingContactInformation->appendChild($ShippingLastName);
+					}
+				} else {
+					if(isset($parts[0])) {
+					$ShippingFirstName=$dom->createElement('ShippingFirstName',$this->safeString($parts[0], 50));
+					$ShippingFirstName=$ShippingContactInformation->appendChild($ShippingFirstName);
+					}
+					if(isset($parts[1])) {
+					$ShippingMI=$dom->createElement('ShippingMI',$this->safeString($parts[1], 1));
+					$ShippingFirstName=$ShippingContactInformation->appendChild($ShippingMI);
+					}
+					if(isset($parts[2])) {
+					$ShippingLastName=$dom->createElement('ShippingLastName',$this->safeString($parts[2], 50));
+					$ShippingFirstName=$ShippingContactInformation->appendChild($ShippingLastName);
+					}
+				}
+			}
 			
 			$shippingaddress=$dom->createElement('ShippingAddress','');
 			$shippingaddress=$shippinginfo->appendChild($shippingaddress);
 			
 			if( $Order->Shipping->address != '' )
 			{
-				$ship_address1=$dom->createElement('ShippingAddress1',substr($Order->Shipping->address,0,60));
+				$ship_address1=$dom->createElement('ShippingAddress1',$this->safeString($Order->Shipping->address, 100));
 				$ship_address1=$shippingaddress->appendChild($ship_address1);
 			}
 
 			if( $Order->Shipping->xaddress != '' )
 			{
-				$ship_address2=$dom->createElement('ShippingAddress2',substr($Order->Shipping->xaddress,0,60));
+				$ship_address2=$dom->createElement('ShippingAddress2',$this->safeString($Order->Shipping->xaddress, 100));
 				$ship_address2=$shippingaddress->appendChild($ship_address2);
 			}
 
 			if( $Order->Shipping->city != '' )
 			{
-				$ship_city=$dom->createElement('ShippingCity',substr($Order->Shipping->city, 0, 40));
+				$ship_city=$dom->createElement('ShippingCity',$this->safeString($Order->Shipping->city,  40));
 				$ship_city=$shippingaddress->appendChild($ship_city);
 			}
 
 			if( $Order->Shipping->state != '' )
 			{
-				$ship_state=$dom->createElement('ShippingStateProvince',substr((!empty($shipping_states) && $shipping_states!="Other") ? $shipping_states : $Order->Shipping->state,0,40));
+				$ship_state=$dom->createElement('ShippingStateProvince', (!empty($shipping_states) && $shipping_states!="Other") ? $shipping_states : $this->safeString($Order->Shipping->state,40));
 				$ship_state=$shippingaddress->appendChild($ship_state);
 			}
 			
 			if( $Order->Shipping->postcode != '' )
 			{
-				$ship_zip=$dom->createElement('ShippingPostalCode',substr($Order->Shipping->postcode, 0, 20));
+				$ship_zip=$dom->createElement('ShippingPostalCode',$this->safeString($Order->Shipping->postcode,  20));
 				$ship_zip=$shippingaddress->appendChild($ship_zip);
 			}
 			
@@ -437,8 +478,6 @@ function handler ($type,$Event)
 			}
 		}//End of Shipping Address node
 		
-		
-	
 		if( $Order->Customer->company != '' )
 		{
 			$customfieldlist = $dom->createElement('CustomFieldList','');
@@ -450,7 +489,7 @@ function handler ($type,$Event)
 			$fieldname = $dom->createElement('FieldName','Company Name');
 			$fieldname = $customfield->appendChild($fieldname);
 				
-			$fieldvalue = $dom->createElement('FieldValue',substr($Order->Customer->company, 0, 50));
+			$fieldvalue = $dom->createElement('FieldValue',$this->safeString($Order->Customer->company, 500));
 			$fieldvalue = $customfield->appendChild($fieldvalue);
 		}
 		
@@ -465,20 +504,20 @@ function handler ($type,$Event)
 
 		if($Order->Billing->name != '') 
 		{
-			$credit_name=$dom->createElement('NameOnCard',$Order->Billing->name);
+			$credit_name=$dom->createElement('NameOnCard',$this->safeString( $Order->Billing->name, 50));
 			$credit_name=$creditcard->appendChild($credit_name);
 		} 
 		else 
 		{
-			$name = substr($Order->Customer->firstname, 0, 50);
+			$name = $this->safeString($Order->Customer->firstname,  50);
 			if($Order->Customer->lastname)
-			$name .= ' '.substr($Order->Customer->lastname, 0, 50);
+			$name .= ' '.$this->safeString($Order->Customer->lastname,  50);
 			
 			$credit_name=$dom->createElement('NameOnCard',$name);
 			$credit_name=$creditcard->appendChild($credit_name);
 		}
 		
-		$credit_number=$dom->createElement('CardNumber',$Order->Billing->card);
+		$credit_number=$dom->createElement('CardNumber',$cnumber);
 		$credit_number=$creditcard->appendChild($credit_number);
 		
 		$credit_cvv=$dom->createElement('Cvv2',$Order->Billing->cvv);
@@ -553,10 +592,13 @@ function handler ($type,$Event)
 				$f_unit_price =  number_format($Item->unitprice,2,'.','');
 				$f_unit_tax = $f_unit_price*$Item->taxrate;				
 				
-				$itemid=$dom->createElement('ItemID',substr($Item->product, 0, 25));
+				$itemid=$dom->createElement('ItemID',$this->safeString($Item->product,  25));
 				$itemid=$orderitem->appendChild($itemid);
 				
-				$itemid=$dom->createElement('ItemName',$Item->name);
+				$item_name = $Item->name;
+				if(isset($Item->option->label))
+				$item_name .= ' ('.$Item->option->label.')';
+				$itemid=$dom->createElement('ItemName',$this->safeString($item_name, 50));
 				$itemid=$orderitem->appendChild($itemid);
 				
 				$quntity=$dom->createElement('Quantity',$Item->quantity);
@@ -564,10 +606,7 @@ function handler ($type,$Event)
 				
 				$unitprice=$dom->createElement('UnitPrice',number_format($Item->unitprice,2,'.','')*100);
 				$unitprice=$orderitem->appendChild($unitprice);	
-				
-				//$unit_deduct=$dom->createElement('UnitDeductible','000');
-				//$unit_deduct=$orderitem->appendChild($unit_deduct);			
-				
+								
 				if( isset( $Item->unittax ) && $Item->unittax != 0 && $this->shoppmeta['tax_inclusive'] == 'off' )
 				{
 					$calctax = $calctax + number_format(($Item->unittax * $Item->quantity),2,'.','');
@@ -587,28 +626,31 @@ function handler ($type,$Event)
 								
 				if( $sku_id != '' )
 				{
-					$sku_code=$dom->createElement('SKU',substr($sku_id, 0, 25));
+					$sku_code=$dom->createElement('SKU',$this->safeString($sku_id,  100));
 					$sku_code=$orderitem->appendChild($sku_code);
 				}	
 		}
-			
-
-	 if(shopp('cart','has-ship-costs'))
-	 {
+						
+		if(shopp('cart','has-ship-costs'))
+		{
 		//echo shopp('cart.get-shipping', 'number=on');
 		//die('gddgdg gdgd');
 		$shipping=$dom->createElement('Shipping','');
 		$shipping=$order->appendChild($shipping);
-							
-		$shipping_method=$dom->createElement('ShippingMethod',shopp('shipping', 'get-option-name'));
-		$shipping_method=$shipping->appendChild($shipping_method);
-		//print_r($shipp);
-		$shipping_value = $dom->createElement('ShippingValue',number_format(shopp('cart.get-shipping','number=on'), 2, '.', '')*100);
-		$shipping_value=$shipping->appendChild($shipping_value);	
-		}
-				
 		
-        $receipt=$dom->createElement('Receipt','');
+		while( shopp( 'shipping', 'options' ) ) 
+		{		
+			if ( shopp('shipping','option-selected') )
+			{
+				$shipping_method=$dom->createElement('ShippingMethod',shopp('shipping', 'get-option-name'));
+				$shipping_method=$shipping->appendChild($shipping_method);
+				$shipping_value = $dom->createElement('ShippingValue',number_format(shopp('cart.get-shipping','number=on'), 2, '.', '')*100);
+				$shipping_value=$shipping->appendChild($shipping_value);
+			}
+		}		
+		}
+		//die('Out');
+		$receipt=$dom->createElement('Receipt','');
 		$receipt=$order->appendChild($receipt);
 		
 		$recipt_lang=$dom->createElement('Language','ENG');
@@ -616,19 +658,19 @@ function handler ($type,$Event)
 		
 		if( $this->settings['OrganizationInformation'] != '')
 		{
-			$recipt_org=$dom->createElement('OrganizationInformation',$this->settings['OrganizationInformation']);
+			$recipt_org=$dom->createElement('OrganizationInformation',$this->safeString($this->settings['OrganizationInformation'], 1500));
 			$recipt_org=$receipt->appendChild($recipt_org);
 		}
 
 		if( $this->settings['ThankYouMessage'] != '')
 		{
-			$recipt_thanks=$dom->createElement('ThankYouMessage',$this->settings['ThankYouMessage']);
+			$recipt_thanks=$dom->createElement('ThankYouMessage',$this->safeString($this->settings['ThankYouMessage'], 500));
 			$recipt_thanks=$receipt->appendChild($recipt_thanks);
 		}
 		
 		if( $this->settings['TermsCondition'] != '')
 		{
-			$recipt_terms=$dom->createElement('TermsCondition',$this->settings['TermsCondition']);
+			$recipt_terms=$dom->createElement('TermsCondition',$this->safeString($this->settings['TermsCondition'], 1500));
 			$recipt_terms=$receipt->appendChild($recipt_terms);
 		}
 		
@@ -650,8 +692,7 @@ function handler ($type,$Event)
 		$trans_type=$transation->appendChild($trans_type);
 		
 		$trans_desc=$dom->createElement('DynamicDescriptor','DynamicDescriptor');
-		$trans_desc=$transation->appendChild($trans_desc); 
-		
+		$trans_desc=$transation->appendChild($trans_desc);
 		
 		if(  $is_recurring )
 		{
@@ -702,31 +743,59 @@ function handler ($type,$Event)
 			$total_ship=$trans_totals->appendChild($total_ship);
 		}
 		
-		//$total_deduct=$dom->createElement('TotalDeductible','000');
-		//$total_deduct=$trans_totals->appendChild($total_deduct);
-		//$Total = shopp('cart.get-total', 'number=on') + $TotalDiscount;
 		$Total = shopp('cart.get-total', 'number=on');
-		//echo shopp('cart.get-total', 'number=on');
-		//die();
-		//echo shopp('cart.get-total', 'number=on').'%%'.$TotalDiscount;
-		//die();
+		
 		$total_amount=$dom->createElement('Total',number_format($Total, 2, '.', '')*100);
 		$total_amount=$trans_totals->appendChild($total_amount);
+		//echo '<pre>';
+		//print_r($Order->Discounts);
+		
+		
 		
 		$couponcode="";
-		if(shopp('cart','has-promos')) {
-			while(shopp('cart','promos')){		
+		if(shopp('cart','has-promos')) 
+		{
+			if(count($Order->Discounts) > 0)
+			{
+				$couponcodes = array();
+				foreach($Order->Discounts as $key=>$val) {
+					array_push($couponcodes,$key);
+				}
+				
+				for($c = 0; $c < count($couponcodes); $c++)
+				{
+					$table = ShoppDatabaseObject::tablename('promo');
+					$codeObj = sDB::query("SELECT * FROM $table where id = '".$couponcodes[$c]."' and status='enabled'");
+					$code = unserialize( $codeObj->rules );
+					
+					foreach($code as $i => $val) 
+					{
+						if(is_numeric($i))
+						{
+							if($val['property'] == 'Promo code')
+							{
+							$couponcode.= $val['value'];
+							$couponcode.= ";";
+							}
+						}
+					}
+				}
+			}
+			/*
+			while(shopp('cart','promos'))
+			{		
 				$name = shopp('cart','get-promo-name');
 				$table = ShoppDatabaseObject::tablename('promo');
-				$codeObj = sDB::query("SELECT * FROM $table where name = '".$name."'");
+				$codeObj = sDB::query("SELECT * FROM $table where name = '".$name."' and status='enabled'");				
 				$code = unserialize( $codeObj->rules );
 				foreach($code as $i => $val) {
 				$couponcode.= $val['value'];
 				$couponcode.= ";";
 				}
 			}
+			*/
 		}
-
+		
 		if( $couponcode != '' )
 		{
 			$trans_coupon=$dom->createElement('CouponCode',substr($couponcode,0,-1));
@@ -752,9 +821,6 @@ function handler ($type,$Event)
 		}
 		
         $strParam = $dom->saveXML();
-		//echo $strParam;
-		//echo '<pre>';
-		//print_r( $Order );
 		//die();
 		$response=array();
 		$connect = array('soap_version' => SOAP_1_1, 'trace' => 1, 'exceptions' => 0);
@@ -762,6 +828,11 @@ function handler ($type,$Event)
 		$params = array('instruction'=>$strParam);
 		$response = $client->Operation($params); 
 		
+		if($response->faultstring == 'Could not connect to host')
+		{
+			new ShoppError($response->faultstring.'. Please try after some time','c&p_express_transacton_error',SHOPP_TRXN_ERR,array());
+			shopp_redirect(shoppurl(false,'checkout'));
+		}
 		$authorizedcode = $response->OperationResult->AuthorizationCode;
 		$response_value=$response->OperationResult->ResultData;
 		$VaultGUID = $response->OperationResult->VaultGUID;	
@@ -807,23 +878,21 @@ function handler ($type,$Event)
 			new ShoppError($AdditionalInfo,'c&p_express_transacton_error',SHOPP_TRXN_ERR,array('codes'=>join('; ',$response_code)));
 			shopp_redirect(shoppurl(false,'checkout'));
 		}
-	
-	
-	$capture = ( count( $Order->Cart->shipped ) > 0 ) ? true : false;
-	
-	$Billing = $this->Order->Billing;
-	shopp_add_order_event($Event->order,$type,array(
-			'txnid' => $VaultGUID,
-			'txnorigin' => $Event->txnid,
-			'fees' => 0,
-			'paymethod' => $this->module,
-			'payid' => $Billing->card,
-			'paytype' => $Billing->cardtype,
-			'amount' => $Event->amount,
-			'gateway' => $this->module,
-			'capture' => true,										// Capture flag
-		));		
-	//shopp_redirect( shoppurl(false,'thanks') );	
+
+		$capture = ( count( $Order->Cart->shipped ) > 0 ) ? true : false;		
+		$Billing = $this->Order->Billing;		
+		shopp_add_order_event($Event->order,$type,array(
+				'txnid' => $VaultGUID,
+				'txnorigin' => $Event->txnid,
+				'fees' => 0,
+				'paymethod' => $this->module,
+				'payid' => $Billing->card,
+				'paytype' => $Billing->cardtype,
+				'amount' => $Event->amount,
+				'gateway' => $this->module,
+				'capture' => $capture,										// Capture flag
+			));
+		
 	}	
 	function settings () {		
 		$currency = array("USD"=>"US","EUR"=>"EUR");
@@ -905,7 +974,9 @@ function handler ($type,$Event)
 			'name' => 'testmode',
 			'checked' => ($this->settings['testmode'] == "on"),
 			'label' => sprintf(__('Test Mode','Shopp'))
-		));		
+		));
+		//$script = "var tc ='ClickandPledge';jQuery(document).bind(tc+'Settings',function(){var $=jqnc(),p='#'+tc+'-',v=$(p+'account_id'),t=$(p+'guid');v.change(function(){v.prop('checked')?t.parent().fadeIn('fast'):t.parent().hide();}).change();});";
+		//$this->ui->behaviors( $script );		
 	}	 
 } // END class ClickandPledge
 
