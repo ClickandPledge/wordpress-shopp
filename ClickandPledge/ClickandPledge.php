@@ -4,15 +4,15 @@
  * @class ClickandPledge
  *
  * @author Click & Pledge Team
- * @C&P version 2.2
+ * @C&P version 2.3
  * @copyright Click & Pledge, 27 Oct, 2011
  * @package Shopp
  * @since 1.2
  * @subpackage ClickandPledge
  *
  * $Id: ClickandPledge.php 1913 2011-05-18 20:03:58Z jond $
- * @Last Update: June 27, 2014
- * @Tested with: Shopp 1.3.4
+ * @Last Update: November 25, 2014
+ * @Tested with: Shopp 1.3.5
  **/
 
 class ClickandPledge extends GatewayFramework implements GatewayModule {
@@ -297,7 +297,7 @@ function handler ($type,$Event)
 		 $applicationname=$dom->createElement('Name','Salesforce:CnP_PaaS_SC_Shopp');
 		 $applicationid=$application->appendChild($applicationname);
 			
-		 $applicationversion=$dom->createElement('Version','2.2');
+		 $applicationversion=$dom->createElement('Version','2.3');
 		 $applicationversion=$application->appendChild($applicationversion);
     
          $request = $dom->createElement('Request', '');
@@ -642,7 +642,7 @@ function handler ($type,$Event)
 		{		
 			if ( shopp('shipping','option-selected') )
 			{
-				$shipping_method=$dom->createElement('ShippingMethod',shopp('shipping', 'get-option-name'));
+				$shipping_method=$dom->createElement('ShippingMethod',$this->safeString( shopp('shipping', 'get-option-name'),50));
 				$shipping_method=$shipping->appendChild($shipping_method);
 				$shipping_value = $dom->createElement('ShippingValue',number_format(shopp('cart.get-shipping','number=on'), 2, '.', '')*100);
 				$shipping_value=$shipping->appendChild($shipping_value);
@@ -821,6 +821,7 @@ function handler ($type,$Event)
 		}
 		
         $strParam = $dom->saveXML();
+		//echo $strParam;
 		//die();
 		$response=array();
 		$connect = array('soap_version' => SOAP_1_1, 'trace' => 1, 'exceptions' => 0);
