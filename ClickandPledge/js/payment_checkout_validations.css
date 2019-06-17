@@ -1,0 +1,48 @@
+.payment, .marketing {	
+	list-style-type: none !important;
+		display: block;
+		clear: both;
+}
+.entry-content li > label {
+    font-weight: bold;
+    	padding: 0px 0 10px;
+	    display: block;
+}
+.entry-content span label, #shopp form div label {
+    font-size: 0.8125em;
+    font-weight: normal;
+	    display: block;
+}
+
+
+#Payment_Methods_label{
+		margin-top: 22px!important;
+		padding:0px!important;
+	}
+.marketing {	
+    	padding-bottom: 10px;
+}
+#Payment_Methods_title{
+		margin-top: 22px!important;
+		padding: 0 0px 4px 0px!important;
+	}
+#Payment_Methods_title table{
+		margin-bottom: 0;
+	}
+.payment{
+		display:block;
+	}
+.payment span{
+		float: left;
+		padding: 0 5px 0 0;
+		display: inline-block;
+		text-align: left;
+		padding-bottom: 10px;
+	}	
+.entry-content .payment:nth-child(2) span:nth-child(2){
+	    width: 47%;
+	}
+.entry-content .payment:nth-child(2) span:nth-child(3){
+	    width: 20%;
+	}
+    
